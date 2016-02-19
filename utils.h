@@ -14,13 +14,36 @@ template <class T>
 void LOGI(T t)
 {
   if (!getenv("DEBUG")) return;
-  std::cout << t << std::endl;
+  if (!getenv("SECC_LOG"))  {
+    std::cout << t << std::endl;
+    return;
+  }
+
+  try {
+    std::ofstream logFile;
+    logFile.open(getenv("SECC_LOG"), std::ios::out | std::ios::app);
+    logFile << t << std::endl;
+    logFile.close();
+  } catch(const std::exception &e) {
+    std::cout << e.what() << std::endl;
+  }
 }
 template <class T, class... Args>
 void LOGI(T t, Args... args)
 {
   if (!getenv("DEBUG")) return;
-  std::cout << "[" << getpid() << "] " << t;
+  if (getenv("SECC_LOG")) {
+    try {
+      std::ofstream logFile;
+      logFile.open(getenv("SECC_LOG"), std::ios::out | std::ios::app);
+      logFile << "[" << getpid() << "] " << t;
+      logFile.close();
+    } catch(const std::exception &e) {
+      std::cout << e.what() << std::endl;
+    }
+  } else
+    std::cout << "[" << getpid() << "] " << t;
+
   LOGI(args...);
 }
 
@@ -42,7 +65,7 @@ pplx::task<bool> test();
 std::string _exec(const char* cmd);
 std::string _basename(const std::string &path);
 std::string _dirname(const std::string &path);
-int getZippedStream(const char* cmd, std::shared_ptr<producer_consumer_buffer<unsigned char>> buf, std::shared_ptr<std::string> hash);
+int getZippedStream(const char* cmd, std::shared_ptr<producer_consumer_buffer<unsigned char>> buf, std::shared_ptr<std::string> hash, size_t *totalSize);
 
 static inline std::string &ltrim(std::string &s) {
   s.erase(s.begin(), std::find_if(s.begin(), s.end(), std::not1(std::ptr_fun<int, int>(std::isspace))));

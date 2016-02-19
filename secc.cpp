@@ -6,7 +6,7 @@
   $ sudo apt-get install libcpprest-dev libssl-dev zlib1g-dev
   $ make clean && make
   run :
-  $ SECC_SCHEDULER_ADDRESS="172.17.42.1" SECC_SCHEDULER_PORT="10509" \
+  $ SECC_ADDRESS="172.17.42.1" [SECC_PORT="10509"] \
     /path/to/secc-native/bin/gcc ...
 */
 
@@ -30,6 +30,14 @@ class _secc_exception : public std::exception
 
 int main(int argc, char* argv[])
 {
+  //debug
+  if (getenv("SECC_CMDLINE")) {
+    string cmd = "";
+    for(int i = 0; i < argc; i++)
+      cmd += "'" + string(argv[i]) + "' ";
+    LOGI(cmd);
+  }
+
   // init
   auto option = make_shared<json::value>();
   auto job = make_shared<json::value>();
@@ -38,8 +46,8 @@ int main(int argc, char* argv[])
   auto infileBuffer = make_shared<producer_consumer_buffer<unsigned char>>();
   auto outfileBuffer = make_shared<producer_consumer_buffer<unsigned char>>();
 
-  string secc_scheduler_address = (getenv("SECC_SCHEDULER_ADDRESS")) ? getenv("SECC_SCHEDULER_ADDRESS") : "127.0.0.1";
-  string secc_scheduler_port = (getenv("SECC_SCHEDULER_PORT")) ? getenv("SECC_SCHEDULER_PORT") : "10509";
+  string secc_scheduler_address = (getenv("SECC_ADDRESS")) ? getenv("SECC_ADDRESS") : "127.0.0.1";
+  string secc_scheduler_port = (getenv("SECC_PORT")) ? getenv("SECC_PORT") : "10509";
   string secc_scheduler_host = "http://" + secc_scheduler_address + ":" + secc_scheduler_port; //FIXME : from settings
   string secc_compiler = _basename(argv[0]);                // FIXME : exception
   string secc_compiler_path = "/usr/bin/" + secc_compiler;  // FIXME : from PATH
@@ -116,9 +124,12 @@ int main(int argc, char* argv[])
     LOGI(cmd);
 
     //const char *cmd = "/usr/bin/gcc -c /mnt/sda1/open/secc_test/test/test.c -E";
-    int ret = getZippedStream(cmd.c_str(), infileBuffer, sourceHash);
+    size_t totalSize;
+    int ret = getZippedStream(cmd.c_str(), infileBuffer, sourceHash, &totalSize);
     if (ret != 0)
       throw secc_exception;
+
+    LOGI("request infile size : ", totalSize);
 
     return pplx::create_task([=](){
       return 1;
@@ -180,8 +191,6 @@ int main(int argc, char* argv[])
       throw secc_exception;
     }
 
-
-
     string secc_daemon_host = "http://" + job->at("daemon")["daemonAddress"].as_string() + ":" + std::to_string(job->at("daemon")["system"]["port"].as_integer());
     string secc_daemon_compile_uri = secc_daemon_host + "/compile/preprocessed/" + job->at("archive")["archiveId"].as_string();
 
@@ -226,7 +235,7 @@ int main(int argc, char* argv[])
   })
   .then([=](size_t c)
   {
-    LOGI(c, " written");
+    LOGI("response outfile size : ", c);
 
     return outfileBuffer->close(std::ios_base::out);
   })

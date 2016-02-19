@@ -174,8 +174,9 @@ untar(concurrency::streams::streambuf<char> *a, const char *directory)
   }
 }
 
-int getZippedStream(const char* cmd, std::shared_ptr<producer_consumer_buffer<unsigned char>> buf, std::shared_ptr<std::string> hash)
+int getZippedStream(const char* cmd, std::shared_ptr<producer_consumer_buffer<unsigned char>> buf, std::shared_ptr<std::string> hash, size_t *totalSize)
 {
+  *totalSize = 0;
   MD5state_st md5ctx;
   MD5_Init(&md5ctx);
 
@@ -216,8 +217,11 @@ int getZippedStream(const char* cmd, std::shared_ptr<producer_consumer_buffer<un
         return Z_STREAM_ERROR;
       have = CHUNK - strm.avail_out;
 
-      buf->putn(out, have).get();  //FIXME : buf->putn_nocopy(out, have).get();
+      size_t size = buf->putn(out, have).get();  //FIXME : buf->putn_nocopy(out, have).get();
+      if (size != have)
+        return Z_ERRNO;
 
+      *totalSize += size;
       // debug gziped output
       // if (fwrite(out, 1, have, stdout) != have || ferror(stdout)) {
       //   (void)deflateEnd(&strm);
