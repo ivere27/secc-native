@@ -11,14 +11,14 @@ git clone https://github.com/ivere27/secc-native.git
 make
 ```
 
-export SECC_SCHEDULER_ADDRESS, SECC_SCHEDULER_PORT
+export SECC_ADDRESS, SECC_PORT
 ```sh
-export SECC_SCHEDULER_ADDRESS=172.17.42.1
-export SECC_SCHEDULER_PORT=10509
+export SECC_ADDRESS=172.17.42.1
+export SECC_PORT=10509
 ```
 
 then, (or export PATH=/path/to/secc-native/bin:$PATH)
 ```sh
-# (optional) DEBUG=* \
+# (optional) DEBUG=* SECC_LOG=/tmp/secc.log \
 /path/to/secc-native/bin/clang -c test.c
 ```
