@@ -243,16 +243,15 @@ int getZippedStream(const char* cmd, std::shared_ptr<producer_consumer_buffer<un
   return 0;
 }
 
-pplx::task<bool> test()
-{
-  return pplx::create_task([](){return false;});
-}
-
-
-std::string _basename(const std::string &path)
+std::string _basename(const std::string &path, bool removeExt)
 {
   size_t i = path.find_last_of('/');
-  return (i == std::string::npos) ? path : path.substr(i +1);
+  std::string base = (i == std::string::npos) ? path : path.substr(i +1);
+  if (!removeExt)
+    return base;
+
+  i = base.find_last_of(".");
+  return (i == std::string::npos) ? base : base.substr(0, i);
 }
 
 std::string _dirname(const std::string &path)

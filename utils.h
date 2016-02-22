@@ -22,7 +22,7 @@ void LOGI(T t)
   try {
     std::ofstream logFile;
     logFile.open(getenv("SECC_LOG"), std::ios::out | std::ios::app);
-    logFile << t << std::endl;
+    logFile << "[" << getpid() << "] " << t <<std::endl;
     logFile.close();
   } catch(const std::exception &e) {
     std::cout << e.what() << std::endl;
@@ -61,9 +61,8 @@ int verify_checksum(const char *p);
 /* Extract a tar archive. */
 int untar(concurrency::streams::streambuf<char> *a, const char *directory);
 
-pplx::task<bool> test();
 std::string _exec(const char* cmd);
-std::string _basename(const std::string &path);
+std::string _basename(const std::string &path, bool removeExt);
 std::string _dirname(const std::string &path);
 int getZippedStream(const char* cmd, std::shared_ptr<producer_consumer_buffer<unsigned char>> buf, std::shared_ptr<std::string> hash, size_t *totalSize);
 

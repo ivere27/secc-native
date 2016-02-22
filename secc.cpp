@@ -13,6 +13,7 @@
 #include <iostream>
 #include <cpprest/http_client.h>
 #include <cpprest/producerconsumerstream.h>
+#include <sys/utsname.h>
 
 #include "utils.h"
 
@@ -49,12 +50,12 @@ int main(int argc, char* argv[])
   string secc_scheduler_address = (getenv("SECC_ADDRESS")) ? getenv("SECC_ADDRESS") : "127.0.0.1";
   string secc_scheduler_port = (getenv("SECC_PORT")) ? getenv("SECC_PORT") : "10509";
   string secc_scheduler_host = "http://" + secc_scheduler_address + ":" + secc_scheduler_port; //FIXME : from settings
-  string secc_compiler = _basename(argv[0]);                // FIXME : exception
+  string secc_compiler = _basename(argv[0], false);                // FIXME : exception
   string secc_compiler_path = "/usr/bin/" + secc_compiler;  // FIXME : from PATH
   string secc_cwd = getcwd(nullptr, 0);
   string secc_mode = "1";      //FIXME : mode 2
-  string secc_cache = "false"; //FIXME : from env and implemenation
-  string secc_cross = "false"; //FIXME : from env and implemenation
+  string secc_cache = (getenv("SECC_CACHE") && strcmp(getenv("SECC_CACHE"),"1") == 0) ? "true" : "false";
+  string secc_cross = (getenv("SECC_CROSS") && strcmp(getenv("SECC_CROSS"),"1") == 0) ? "true" : "false";
 
   bool _argv_c_exists = false;
   json::value secc_argv = json::value::array();
@@ -137,6 +138,16 @@ int main(int argc, char* argv[])
   })
   .then([=](int ret)
   {
+    //system information
+    struct utsname u;
+    if (uname(&u) != 0)
+      throw secc_exception;
+
+    string hostname = u.nodename;
+    string platform = (strcmp(u.sysname,"Linux") == 0) ? "linux" : "unknown"; //FIXME : darwin
+    string release = u.release;
+    string arch = (strcmp(u.machine,"x86_64") == 0) ? "x64" : "unknown"; //FIXME : arm
+
     string compiler_version = _exec(string(secc_compiler_path + " --version").c_str());
     string compiler_dumpversion = _exec(string(secc_compiler_path + " -dumpversion").c_str());
     string compiler_dumpmachine = _exec(string(secc_compiler_path + " -dumpmachine").c_str());
@@ -145,12 +156,10 @@ int main(int argc, char* argv[])
 
     json::value data = json::value::object();
     data["systemInformation"] = json::value::object();
-    data["systemInformation"]["hostname"] = json::value("_test"); // FIXME : from system
-    data["systemInformation"]["platform"] = json::value("linux"); // FIXME : "
-    data["systemInformation"]["release"] = json::value("3.19.0-26-generic");  // FIXME : "
-    data["systemInformation"]["arch"] = json::value("x64");       // FIXME : "
-    data["systemInformation"]["numCPUs"] = json::value("1");
-    data["systemInformation"]["port"] = json::value("10508");
+    data["systemInformation"]["hostname"] = json::value(hostname);
+    data["systemInformation"]["platform"] = json::value(platform);
+    data["systemInformation"]["release"] = json::value(release);
+    data["systemInformation"]["arch"] = json::value(arch);
     data["compilerInformation"] = json::value::object();
     data["compilerInformation"]["version"] = json::value(compiler_version);
     data["compilerInformation"]["dumpversion"] = json::value(compiler_dumpversion);
@@ -195,11 +204,8 @@ int main(int argc, char* argv[])
     string secc_daemon_compile_uri = secc_daemon_host + "/compile/preprocessed/" + job->at("archive")["archiveId"].as_string();
 
     string secc_filename = option->at("outfile").is_null()
-                              ? _basename(option->at("infile").as_string())
-                              : _basename(option->at("outfile").as_string());
-    auto lastIndex = secc_filename.find_last_of(".");
-    if (lastIndex > 0)
-      secc_filename = secc_filename.substr(0, lastIndex);
+                              ? _basename(option->at("infile").as_string(), true)
+                              : _basename(option->at("outfile").as_string(), true);
 
     http::client::http_client_config client_config;
     client_config.set_timeout(utility::seconds(60));
