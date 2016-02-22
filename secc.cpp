@@ -200,6 +200,43 @@ int main(int argc, char* argv[])
       throw secc_exception;
     }
 
+    // try cache! FIXME : refactoring!
+    if (secc_cache.compare("true") == 0 && job->at("cache").as_bool()) {
+      try {
+        string secc_daemon_host = "http://" + job->at("daemon")["daemonAddress"].as_string() + ":" + std::to_string(job->at("daemon")["system"]["port"].as_integer());
+        string secc_daemon_cache_uri = secc_daemon_host + "/cache/" + job->at("archive")["archiveId"].as_string() + "/" + *sourceHash + "/" + option->at("argvHash").as_string();
+
+        LOGI("cache is available. try URL : ", secc_daemon_cache_uri);
+        http::client::http_client client(U(secc_daemon_cache_uri));
+        http_request msg(methods::GET);
+
+        http_response response = client.request(msg).get();
+        if (response.status_code() != 200)
+          throw secc_exception;
+
+        response.body().read_to_end(*outfileBuffer).get();
+        outfileBuffer->close(std::ios_base::out).get();
+
+        string outdir = (option->at("outfile").is_null())
+                      ? secc_cwd
+                      : _dirname(option->at("outfile").as_string());
+
+        auto is = outfileBuffer->create_istream();
+        concurrency::streams::streambuf<char> streambuf = is.streambuf();
+        LOGI("outdir : ", outdir);
+
+        int ret = untar(&streambuf, outdir.c_str());
+        if (ret != 0)
+          throw secc_exception;
+
+        LOGI("cache done");
+        _exit(0);
+      } catch(const std::exception &e) {
+        LOGE("failed to hit cache.");
+      }
+    }
+
+
     string secc_daemon_host = "http://" + job->at("daemon")["daemonAddress"].as_string() + ":" + std::to_string(job->at("daemon")["system"]["port"].as_integer());
     string secc_daemon_compile_uri = secc_daemon_host + "/compile/preprocessed/" + job->at("archive")["archiveId"].as_string();
 
