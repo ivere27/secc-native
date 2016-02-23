@@ -54,8 +54,8 @@ int main(int argc, char* argv[])
   string secc_compiler_path = "/usr/bin/" + secc_compiler;  // FIXME : from PATH
   string secc_cwd = getcwd(nullptr, 0);
   string secc_mode = "1";      //FIXME : mode 2
-  string secc_cache = (getenv("SECC_CACHE") && strcmp(getenv("SECC_CACHE"),"1") == 0) ? "true" : "false";
-  string secc_cross = (getenv("SECC_CROSS") && strcmp(getenv("SECC_CROSS"),"1") == 0) ? "true" : "false";
+  bool secc_cache = (getenv("SECC_CACHE") && strcmp(getenv("SECC_CACHE"),"1") == 0) ? true : false;
+  bool secc_cross = (getenv("SECC_CROSS") && strcmp(getenv("SECC_CROSS"),"1") == 0) ? true : false;
 
   bool _argv_c_exists = false;
   json::value secc_argv = json::value::array();
@@ -201,7 +201,7 @@ int main(int argc, char* argv[])
     }
 
     // try cache! FIXME : refactoring!
-    if (secc_cache.compare("true") == 0 && job->at("cache").as_bool()) {
+    if (secc_cache && job->at("cache").as_bool()) {
       try {
         string secc_daemon_host = "http://" + job->at("daemon")["daemonAddress"].as_string() + ":" + std::to_string(job->at("daemon")["system"]["port"].as_integer());
         string secc_daemon_cache_uri = secc_daemon_host + "/cache/" + job->at("archive")["archiveId"].as_string() + "/" + *sourceHash + "/" + option->at("argvHash").as_string();
@@ -235,7 +235,6 @@ int main(int argc, char* argv[])
         LOGE("failed to hit cache.");
       }
     }
-
 
     string secc_daemon_host = "http://" + job->at("daemon")["daemonAddress"].as_string() + ":" + std::to_string(job->at("daemon")["system"]["port"].as_integer());
     string secc_daemon_compile_uri = secc_daemon_host + "/compile/preprocessed/" + job->at("archive")["archiveId"].as_string();
