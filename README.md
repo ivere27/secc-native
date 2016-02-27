@@ -7,7 +7,7 @@ a project of 'Second Compiler'.
 
 ## How to use
 you may need to install dependencies by,
-<br>ubuntu $ sudo apt-get install libcpprest-dev libssl-dev zlib1g-dev
+<br>ubuntu $ sudo apt-get install libboost-dev libcpprest-dev libssl-dev zlib1g-dev
 ```sh
 git clone https://github.com/ivere27/secc-native.git
 make
