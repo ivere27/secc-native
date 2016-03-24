@@ -224,11 +224,8 @@ int main(int argc, char* argv[])
 
         LOGI("outdir : ", outdir);
 
-        auto isZip = outfileBuffer->create_istream();
-        concurrency::streams::streambuf<unsigned char> zipStreambuf = isZip.streambuf();
-
-        auto osTar = tempBuffer->create_ostream();
-        concurrency::streams::streambuf<unsigned char> oTarStreambuf = osTar.streambuf();
+        auto zipStreambuf = outfileBuffer->create_istream().streambuf();
+        auto oTarStreambuf = tempBuffer->create_ostream().streambuf();
 
         int ret = unzip(&zipStreambuf, &oTarStreambuf);
         if (ret != 0)
@@ -301,20 +298,15 @@ int main(int argc, char* argv[])
                   : _dirname(option->at("outfile").as_string());
     LOGI("outdir : ", outdir);
 
-    auto isZip = outfileBuffer->create_istream();
-    concurrency::streams::streambuf<unsigned char> zipStreambuf = isZip.streambuf();
-
-    auto osTar = tempBuffer->create_ostream();
-    concurrency::streams::streambuf<unsigned char> oTarStreambuf = osTar.streambuf();
+    auto zipStreambuf = outfileBuffer->create_istream().streambuf();
+    auto oTarStreambuf = tempBuffer->create_ostream().streambuf();
 
     int ret = unzip(&zipStreambuf, &oTarStreambuf);
     if (ret != 0)
       throw secc_exception;
 
     LOGI("unzip done.");
-
-    auto isTar = tempBuffer->create_istream();
-    concurrency::streams::streambuf<char> iTarStreambuf = isTar.streambuf();
+    concurrency::streams::streambuf<char> iTarStreambuf = tempBuffer->create_istream().streambuf();
 
     ret = untar(&iTarStreambuf, outdir.c_str());
     if (ret != 0)
