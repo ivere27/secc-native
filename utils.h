@@ -65,6 +65,7 @@ std::string _exec(const char* cmd);
 std::string _basename(const std::string &path, bool removeExt);
 std::string _dirname(const std::string &path);
 int getZippedStream(const char* cmd, std::shared_ptr<producer_consumer_buffer<unsigned char>> buf, std::shared_ptr<std::string> hash, size_t *totalSize);
+int unzip(concurrency::streams::streambuf<unsigned char> *source, concurrency::streams::streambuf<unsigned char> *dest);
 
 static inline std::string &ltrim(std::string &s) {
   s.erase(s.begin(), std::find_if(s.begin(), s.end(), std::not1(std::ptr_fun<int, int>(std::isspace))));

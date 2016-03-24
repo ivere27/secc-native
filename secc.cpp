@@ -46,6 +46,7 @@ int main(int argc, char* argv[])
 
   auto infileBuffer = make_shared<producer_consumer_buffer<unsigned char>>();
   auto outfileBuffer = make_shared<producer_consumer_buffer<unsigned char>>();
+  auto tempBuffer = make_shared<producer_consumer_buffer<unsigned char>>();
 
   string secc_scheduler_address = (getenv("SECC_ADDRESS")) ? getenv("SECC_ADDRESS") : "127.0.0.1";
   string secc_scheduler_port = (getenv("SECC_PORT")) ? getenv("SECC_PORT") : "10509";
@@ -221,11 +222,24 @@ int main(int argc, char* argv[])
                       ? secc_cwd
                       : _dirname(option->at("outfile").as_string());
 
-        auto is = outfileBuffer->create_istream();
-        concurrency::streams::streambuf<char> streambuf = is.streambuf();
         LOGI("outdir : ", outdir);
 
-        int ret = untar(&streambuf, outdir.c_str());
+        auto isZip = outfileBuffer->create_istream();
+        concurrency::streams::streambuf<unsigned char> zipStreambuf = isZip.streambuf();
+
+        auto osTar = tempBuffer->create_ostream();
+        concurrency::streams::streambuf<unsigned char> oTarStreambuf = osTar.streambuf();
+
+        int ret = unzip(&zipStreambuf, &oTarStreambuf);
+        if (ret != 0)
+          throw secc_exception;
+
+        LOGI("unzip done.");
+
+        auto isTar = tempBuffer->create_istream();
+        concurrency::streams::streambuf<char> iTarStreambuf = isTar.streambuf();
+
+        ret = untar(&iTarStreambuf, outdir.c_str());
         if (ret != 0)
           throw secc_exception;
 
@@ -285,12 +299,24 @@ int main(int argc, char* argv[])
     string outdir = (option->at("outfile").is_null())
                   ? secc_cwd
                   : _dirname(option->at("outfile").as_string());
-
-    auto is = outfileBuffer->create_istream();
-    concurrency::streams::streambuf<char> streambuf = is.streambuf();
     LOGI("outdir : ", outdir);
 
-    int ret = untar(&streambuf, outdir.c_str());
+    auto isZip = outfileBuffer->create_istream();
+    concurrency::streams::streambuf<unsigned char> zipStreambuf = isZip.streambuf();
+
+    auto osTar = tempBuffer->create_ostream();
+    concurrency::streams::streambuf<unsigned char> oTarStreambuf = osTar.streambuf();
+
+    int ret = unzip(&zipStreambuf, &oTarStreambuf);
+    if (ret != 0)
+      throw secc_exception;
+
+    LOGI("unzip done.");
+
+    auto isTar = tempBuffer->create_istream();
+    concurrency::streams::streambuf<char> iTarStreambuf = isTar.streambuf();
+
+    ret = untar(&iTarStreambuf, outdir.c_str());
     if (ret != 0)
       throw secc_exception;
 
