@@ -15,11 +15,15 @@
 #include <cpprest/producerconsumerstream.h>
 #include <sys/utsname.h>
 
+#include "log.h"
+#include "untar.h"
 #include "utils.h"
+#include "zip.h"
 
 using namespace std;
 using namespace web;                        // Common features like URIs.
 using namespace web::http;                  // Common HTTP functionality
+using namespace concurrency::streams;
 
 class _secc_exception : public std::exception
 {

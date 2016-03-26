@@ -1,7 +1,7 @@
 CC=g++
 CFLAGS=-c -Wall -std=c++11 -O3
 LDFLAGS=-lcrypto -lcpprest -lz
-SOURCES=utils.cpp secc.cpp
+SOURCES=utils.cpp untar.cpp zip.cpp secc.cpp
 OBJECTS=$(SOURCES:.cpp=.o)
 EXECUTABLE=secc
 
