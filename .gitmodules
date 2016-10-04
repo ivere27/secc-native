@@ -1,0 +1,12 @@
+[submodule "SimpleHttpRequest"]
+	path = SimpleHttpRequest
+	url = https://github.com/ivere27/SimpleHttpRequest.git
+[submodule "json"]
+	path = json
+	url = https://github.com/nlohmann/json.git
+[submodule "libuv"]
+	path = libuv
+	url = https://github.com/libuv/libuv.git
+[submodule "http-parser"]
+	path = http-parser
+	url = https://github.com/nodejs/http-parser.git
