@@ -3,7 +3,7 @@
 
   dependencies : SimpleHttpRequest, nlohmann/json, zlib, md5
   ubuntu :
-  $ sudo apt-get install libcpprest-dev libssl-dev zlib1g-dev
+  $ sudo apt-get install libssl-dev zlib1g-dev
   $ make clean && make
   run :
   $ SECC_ADDRESS="172.17.42.1" [SECC_PORT="10509"] \
