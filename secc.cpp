@@ -69,6 +69,126 @@ int main(int argc, char* argv[])
     secc_argv[i-1] = argv[i];
   }
 
+
+  auto funcDaemonCompile = [&]() {
+    string secc_daemon_host = "http://" + job["daemon"]["daemonAddress"].get<string>() + ":" + std::to_string(job["daemon"]["daemonPort"].get<int>());
+    string secc_daemon_compile_uri = secc_daemon_host + "/compile/preprocessed/" + job["archive"]["archiveId"].get<string>();
+
+    string secc_filename = option["outfile"].is_null()
+                              ? _basename(option["infile"], true)
+                              : _basename(option["outfile"], true);
+
+    // FIXME : using write() with map<string, string> options
+    //                        and map<string, string> headers
+    LOGI("REQUEST headers ");
+    //LOGI(headers)
+    //LOGI(infileBuffer.str());
+
+    SimpleHttpRequest request;
+    request.timeout = 50000;
+    request
+    .setHeader("content-type","application/octet-stream")
+    .setHeader("Content-Encoding", "gzip")
+    .setHeader("secc-jobid", to_string(job["jobId"].get<int>()))
+    .setHeader("secc-driver", secc_driver)
+    .setHeader("secc-language", option["language"])
+    .setHeader("secc-argv", option["remoteArgv"].dump())
+    .setHeader("secc-filename", secc_filename)
+    .setHeader("secc-outfile", option["outfile"].is_null() ? "null" : option["outfile"].get<string>())
+    .setHeader("secc-cross", secc_cross ? "true" : "false")
+    .setHeader("secc-target", "x86_64-linux-gnu") // FIXME : from system
+    .post(secc_daemon_compile_uri, infileBuffer.str())
+    .on("error", [](Error&& err){
+      throw secc_exception;
+    });
+    request.on("response", [&](Response&& res){
+      //check secc-code
+      LOGI("compile - response status code: ", res.statusCode);
+      if (res.statusCode != 200)
+        throw secc_exception;
+
+      LOGI("RESPONSE headers ");
+      for (const auto &kv : res.headers)
+        LOGI(kv.first, " : ", kv.second);
+
+      //cout << res.str() << endl;
+
+      string outdir = (option["outfile"].is_null())
+                    ? secc_cwd
+                    : _dirname(option["outfile"].get<string>());
+      LOGI("outdir : ", outdir);
+
+
+      stringstream tarStream;
+
+      int ret = unzip(res, tarStream);
+      if (ret != 0)
+        throw secc_exception;
+
+      LOGI("unzip done.");
+      ret = untar(tarStream, outdir.c_str());
+      if (ret != 0)
+        throw secc_exception;
+
+      LOGI("done");
+
+    });
+    request.end();
+  };
+
+  auto funcDaemonCache = [&]() {
+    try {
+      string secc_daemon_host = "http://" + job["daemon"]["daemonAddress"].get<string>() + ":" + std::to_string(job["daemon"]["daemonPort"].get<int>());
+      string secc_daemon_cache_uri = secc_daemon_host + "/cache/" + job["archive"]["archiveId"].get<string>() + "/" + *sourceHash + "/" + option["argvHash"].get<string>();
+
+      LOGI("cache is available. try URL : ", secc_daemon_cache_uri);
+
+      SimpleHttpRequest requestCache;
+      requestCache.timeout = 50000;
+      requestCache.get(secc_daemon_cache_uri)
+      .on("error", [](Error&& err){
+        throw secc_exception;
+      }).on("response", [&](Response&& res){
+        //check secc-code
+        LOGI("cache - response status code: ", res.statusCode);
+        if (res.statusCode != 200)
+          throw std::runtime_error("unable to get the cache");
+
+        LOGI("RESPONSE headers ");
+        for (const auto &kv : res.headers)
+          LOGI(kv.first, " : ", kv.second);
+
+        //cout << res.str() << endl;
+
+        string outdir = (option["outfile"].is_null())
+                      ? secc_cwd
+                      : _dirname(option["outfile"].get<string>());
+        LOGI("outdir : ", outdir);
+
+
+        stringstream tarStream;
+
+        int ret = unzip(res, tarStream);
+        if (ret != 0)
+          throw secc_exception;
+
+        LOGI("unzip done.");
+        ret = untar(tarStream, outdir.c_str());
+        if (ret != 0)
+          throw secc_exception;
+
+        LOGI("cache done");
+        _exit(0);
+
+
+      }).end();
+    } catch(const std::exception &e) {
+      LOGE("failed to hit cache.");
+      funcDaemonCompile();
+    }
+  };
+
+
   try
   {
     //quick checks.
@@ -190,73 +310,11 @@ int main(int argc, char* argv[])
         }
 
         // FIXME : implement CACHE logic!!
-        //
-
-        string secc_daemon_host = "http://" + job["daemon"]["daemonAddress"].get<string>() + ":" + std::to_string(job["daemon"]["daemonPort"].get<int>());
-        string secc_daemon_compile_uri = secc_daemon_host + "/compile/preprocessed/" + job["archive"]["archiveId"].get<string>();
-
-        string secc_filename = option["outfile"].is_null()
-                                  ? _basename(option["infile"], true)
-                                  : _basename(option["outfile"], true);
-
-        // FIXME : using write() with map<string, string> options
-        //                        and map<string, string> headers
-        LOGI("REQUEST headers ");
-        //LOGI(headers)
-        //LOGI(infileBuffer.str());
-
-        stringstream body;
-        body << "{\"archive\":3}";
-
-        SimpleHttpRequest request;
-        request.timeout = 50000;
-        request
-        .setHeader("content-type","application/octet-stream")
-        .setHeader("Content-Encoding", "gzip")
-        .setHeader("secc-jobid", to_string(job["jobId"].get<int>()))
-        .setHeader("secc-driver", secc_driver)
-        .setHeader("secc-language", option["language"])
-        .setHeader("secc-argv", option["remoteArgv"].dump())
-        .setHeader("secc-filename", secc_filename)
-        .setHeader("secc-cross", secc_cross ? "true" : "false")
-        .setHeader("secc-target", "x86_64-linux-gnu") // FIXME : from system
-        .post(secc_daemon_compile_uri, infileBuffer.str())
-        .on("error", [](Error&& err){
-          throw secc_exception;
-        });
-        request.on("response", [&](Response&& res){
-          //check secc-code
-          LOGI("compile - response status code: ", res.statusCode);
-          if (res.statusCode != 200)
-            throw secc_exception;
-
-          LOGI("RESPONSE headers ");
-          for (const auto &kv : res.headers)
-            LOGI(kv.first, " : ", kv.second);
-
-          //cout << res.str() << endl;
-
-          string outdir = (option["outfile"].is_null())
-                        ? secc_cwd
-                        : _dirname(option["outfile"].get<string>());
-          LOGI("outdir : ", outdir);
-
-
-          stringstream tarStream;
-
-          int ret = unzip(res, tarStream);
-          if (ret != 0)
-            throw secc_exception;
-
-          LOGI("unzip done.");
-          ret = untar(tarStream, outdir.c_str());
-          if (ret != 0)
-            throw secc_exception;
-
-          LOGI("done");
-
-        });
-        request.end();
+        if (secc_cache && job["cache"].get<bool>()) {
+          funcDaemonCache();
+        } else {
+          funcDaemonCompile();
+        }
 
       }).end();
 
