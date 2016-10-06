@@ -64,7 +64,7 @@ int getZippedStream(const char* cmd, stringstream& buf, std::shared_ptr<std::str
     } while(strm.avail_out == 0);
   } while (flush != Z_FINISH);
   (void)deflateEnd(&strm);
-  
+
   //buf->close(); // FIXME : not need
 
   unsigned char md5[16];
@@ -75,7 +75,7 @@ int getZippedStream(const char* cmd, stringstream& buf, std::shared_ptr<std::str
 
   *hash = hex;
 
-  return 0;
+  return pclose(fp);
 }
 
 /* Decompress from file source to file dest until stream ends or EOF.
