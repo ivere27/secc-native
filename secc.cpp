@@ -19,6 +19,7 @@
 #include "untar.h"
 #include "utils.h"
 #include "zip.h"
+#include "UriCodec.h"
 
 using namespace std;
 using namespace request;
@@ -104,14 +105,14 @@ int main(int argc, char* argv[])
     request.on("response", [&](Response&& res){
       //check secc-code
       LOGI("compile - response status code: ", res.statusCode);
-      if (res.statusCode != 200)
+      if ( res.statusCode != 200
+        || res.headers["secc-code"].compare("0") != 0)
         throw secc_exception;
 
-      LOGI("RESPONSE headers ");
-      for (const auto &kv : res.headers)
-        LOGI(kv.first, " : ", kv.second);
-
-      //cout << res.str() << endl;
+      if (res.headers.count("secc-stdout"))
+        cout << UriDecode(res.headers["secc-stdout"]);
+      if (res.headers.count("secc-stderr"))
+        cerr << UriDecode(res.headers["secc-stderr"]);
 
       string outdir = (option["outfile"].is_null())
                     ? secc_cwd
@@ -134,7 +135,7 @@ int main(int argc, char* argv[])
 
     });
     request.end();
-  };
+  };  // funcDaemonCompile
 
   auto funcDaemonCache = [&]() {
     try {
@@ -154,11 +155,10 @@ int main(int argc, char* argv[])
         if (res.statusCode != 200)
           throw std::runtime_error("unable to get the cache");
 
-        LOGI("RESPONSE headers ");
-        for (const auto &kv : res.headers)
-          LOGI(kv.first, " : ", kv.second);
-
-        //cout << res.str() << endl;
+        if (res.headers.count("secc-stdout"))
+          cout << UriDecode(res.headers["secc-stdout"]);
+        if (res.headers.count("secc-stderr"))
+          cerr << UriDecode(res.headers["secc-stderr"]);
 
         string outdir = (option["outfile"].is_null())
                       ? secc_cwd
@@ -167,7 +167,6 @@ int main(int argc, char* argv[])
 
 
         stringstream tarStream;
-
         int ret = unzip(res, tarStream);
         if (ret != 0)
           throw secc_exception;
@@ -180,13 +179,12 @@ int main(int argc, char* argv[])
         LOGI("cache done");
         _exit(0);
 
-
       }).end();
     } catch(const std::exception &e) {
       LOGE("failed to hit cache.");
       funcDaemonCompile();
     }
-  };
+  };  // funcDaemonCache
 
 
   try
@@ -242,7 +240,7 @@ int main(int argc, char* argv[])
       LOGI("COMMAND for generating a preprocessed source.");
       LOGI(cmd);
 
-      //const char *cmd = "/usr/bin/gcc -c /mnt/sda1/open/secc_test/test/test.c -E";
+      //FIXME : use libuv's uv_spawn()
       size_t totalSize;
       int ret = getZippedStream(cmd.c_str(), infileBuffer, sourceHash, &totalSize);
       if (ret != 0)
@@ -332,6 +330,7 @@ int main(int argc, char* argv[])
     strcpy(pathBuf, secc_driver_path.c_str());
     argv[0] = pathBuf;
 
+    // FIXME : use uv_spawn
     execv(secc_driver_path.c_str(), argv);
   }
 
