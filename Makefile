@@ -1,7 +1,13 @@
 CC=g++
-CFLAGS=-c -Wall -std=c++11 -O3
-LDFLAGS=-lcrypto -lcpprest -lz
-SOURCES=utils.cpp untar.cpp zip.cpp secc.cpp
+CFLAGS=-c -Wall -std=c++11 \
+		-I./SimpleHttpRequest/http-parser/ \
+		-I./SimpleHttpRequest/libuv/include/ \
+		-I./SimpleHttpRequest \
+		-I./json/src
+LDFLAGS=-lpthread -lcrypto -lcpprest -lz \
+		./SimpleHttpRequest/libuv/.libs/libuv.a \
+		./SimpleHttpRequest/http-parser/http_parser.o
+SOURCES=secc.cpp
 OBJECTS=$(SOURCES:.cpp=.o)
 EXECUTABLE=secc
 
