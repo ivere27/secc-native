@@ -213,7 +213,7 @@ int main(int argc, char* argv[])
     LOGI(data.dump());
 
     SimpleHttpRequest requestOptionAnalyze;
-    requestOptionAnalyze.timeout = 50000;
+    requestOptionAnalyze.timeout = 1000;
     requestOptionAnalyze.setHeader("content-type","application/json")
     .post(secc_scheduler_host + "/option/analyze", data.dump())
     .on("error", [](Error&& err){
