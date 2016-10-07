@@ -256,7 +256,11 @@ int main(int argc, char* argv[])
 
 
       string hostname = u.nodename;
-      string platform = (strcmp(u.sysname,"Linux") == 0) ? "linux" : "unknown"; //FIXME : darwin
+      string platform = (strcmp(u.sysname,"Linux") == 0)
+                        ? "linux"
+                        : (strcmp(u.sysname,"Darwin") == 0)
+                          ? "darwin"
+                          : "unknown";
       string release = u.release;
       string arch = (strcmp(u.machine,"x86_64") == 0) ? "x64" : "unknown"; //FIXME : arm
 
