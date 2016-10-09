@@ -186,24 +186,98 @@ int main(int argc, char* argv[])
     }
   };  // funcDaemonCache
 
+  auto funcJobNew = [&]() {
+    //preprocessed file.
+    string cmd = secc_driver_path;
+    for(size_t i = 0; i < option["localArgv"].size(); i++)
+      cmd += " '" + option["localArgv"][i].get<string>() + "'";
 
-  try
-  {
-    //quick checks.
-    if (secc_scheduler_host.size() == 0) {
-      LOGE("secc_scheduler_host error");
-      throw secc_exception;
-    }
-    if (secc_cwd.find("CMakeFiles") != std::string::npos) {
-      LOGE("in CMakeFiles");
-      throw secc_exception;
-    }
+    LOGI("COMMAND for generating a preprocessed source.");
+    LOGI(cmd);
 
-    if (!_argv_c_exists) {
-      LOGE("-c not exists");
+    //FIXME : use libuv's uv_spawn()
+    size_t totalSize;
+    int ret = getZippedStream(cmd.c_str(), infileBuffer, sourceHash, &totalSize);
+    if (ret != 0)
       throw secc_exception;
-    }
 
+    LOGI("request infile size : ", totalSize);
+
+
+    //system information
+    struct utsname u;
+    if (uname(&u) != 0)
+      throw secc_exception;
+
+
+    string hostname = u.nodename;
+    string platform = (strcmp(u.sysname,"Linux") == 0)
+                      ? "linux"
+                      : (strcmp(u.sysname,"Darwin") == 0)
+                        ? "darwin"
+                        : "unknown";
+    string release = u.release;
+    string arch = (strcmp(u.machine,"x86_64") == 0) ? "x64" : "unknown"; //FIXME : arm
+
+    string compiler_version = _exec(string(secc_driver_path + " --version").c_str());
+    string compiler_dumpversion = _exec(string(secc_driver_path + " -dumpversion").c_str());
+    string compiler_dumpmachine = _exec(string(secc_driver_path + " -dumpmachine").c_str());
+    compiler_dumpversion = trim(compiler_dumpversion);
+    compiler_dumpmachine = trim(compiler_dumpmachine);
+
+    auto data = json::object();
+    data["systemInformation"] = json::object();
+    data["systemInformation"]["hostname"] = hostname;
+    data["systemInformation"]["platform"] = platform;
+    data["systemInformation"]["release"] = release;
+    data["systemInformation"]["arch"] = arch;
+    data["compilerInformation"] = json::object();
+    data["compilerInformation"]["version"] = compiler_version;
+    data["compilerInformation"]["dumpversion"] = compiler_dumpversion;
+    data["compilerInformation"]["dumpmachine"] = compiler_dumpmachine;
+    data["mode"] = secc_mode;
+    data["projectId"] = option["projectId"];
+    data["cachePrefered"] = secc_cache;
+    data["crossPrefered"] = secc_cross;
+    data["sourcePath"] = option["infile"];
+    data["sourceHash"] = *sourceHash;
+    data["argvHash"] = option["argvHash"];
+
+    LOGI("REQUEST body /job/new");
+    LOGI(data);
+
+    SimpleHttpRequest requestJobNew;
+    requestJobNew.timeout = 50000;
+    requestJobNew.setHeader("content-type","application/json")
+    .post(secc_scheduler_host + "/job/new", data.dump())
+    .on("error", [](Error&& err){
+      throw secc_exception;
+    }).on("response", [&](Response&& res){
+      LOGI("JOB - response status code:", res.statusCode);
+
+      if (res.statusCode != 200)
+        throw secc_exception;
+
+      job = json::parse(res.str());
+      LOGI(job.dump());
+
+      if (job["local"].get<bool>()) {
+        LOGE("useLocal from SCHEDULER /job/new");
+        throw secc_exception;
+      }
+
+      // FIXME : implement CACHE logic!!
+      if (secc_cache && job["cache"].get<bool>()) {
+        funcDaemonCache();
+      } else {
+        funcDaemonCompile();
+      }
+
+    }).end();
+
+  }; //funcJobNew
+
+  auto funcOptionAnalyze = [&]() {
     auto data = json::object();
     data["driver"] = secc_driver;
     data["cwd"] = secc_cwd;
@@ -232,97 +306,29 @@ int main(int argc, char* argv[])
         throw secc_exception;
       }
 
-      //preprocessed file.
-      string cmd = secc_driver_path;
-      for(size_t i = 0; i < option["localArgv"].size(); i++)
-        cmd += " '" + option["localArgv"][i].get<string>() + "'";
-
-      LOGI("COMMAND for generating a preprocessed source.");
-      LOGI(cmd);
-
-      //FIXME : use libuv's uv_spawn()
-      size_t totalSize;
-      int ret = getZippedStream(cmd.c_str(), infileBuffer, sourceHash, &totalSize);
-      if (ret != 0)
-        throw secc_exception;
-
-      LOGI("request infile size : ", totalSize);
-
-
-      //system information
-      struct utsname u;
-      if (uname(&u) != 0)
-        throw secc_exception;
-
-
-      string hostname = u.nodename;
-      string platform = (strcmp(u.sysname,"Linux") == 0)
-                        ? "linux"
-                        : (strcmp(u.sysname,"Darwin") == 0)
-                          ? "darwin"
-                          : "unknown";
-      string release = u.release;
-      string arch = (strcmp(u.machine,"x86_64") == 0) ? "x64" : "unknown"; //FIXME : arm
-
-      string compiler_version = _exec(string(secc_driver_path + " --version").c_str());
-      string compiler_dumpversion = _exec(string(secc_driver_path + " -dumpversion").c_str());
-      string compiler_dumpmachine = _exec(string(secc_driver_path + " -dumpmachine").c_str());
-      compiler_dumpversion = trim(compiler_dumpversion);
-      compiler_dumpmachine = trim(compiler_dumpmachine);
-
-      auto data = json::object();
-      data["systemInformation"] = json::object();
-      data["systemInformation"]["hostname"] = hostname;
-      data["systemInformation"]["platform"] = platform;
-      data["systemInformation"]["release"] = release;
-      data["systemInformation"]["arch"] = arch;
-      data["compilerInformation"] = json::object();
-      data["compilerInformation"]["version"] = compiler_version;
-      data["compilerInformation"]["dumpversion"] = compiler_dumpversion;
-      data["compilerInformation"]["dumpmachine"] = compiler_dumpmachine;
-      data["mode"] = secc_mode;
-      data["projectId"] = option["projectId"];
-      data["cachePrefered"] = secc_cache;
-      data["crossPrefered"] = secc_cross;
-      data["sourcePath"] = option["infile"];
-      data["sourceHash"] = *sourceHash;
-      data["argvHash"] = option["argvHash"];
-
-      LOGI("REQUEST body /job/new");
-      LOGI(data);
-
-      SimpleHttpRequest requestJobNew;
-      requestJobNew.timeout = 50000;
-      requestJobNew.setHeader("content-type","application/json")
-      .post(secc_scheduler_host + "/job/new", data.dump())
-      .on("error", [](Error&& err){
-        throw secc_exception;
-      }).on("response", [&](Response&& res){
-        LOGI("JOB - response status code:", res.statusCode);
-
-        if (res.statusCode != 200)
-          throw secc_exception;
-
-        job = json::parse(res.str());
-        LOGI(job.dump());
-
-        if (job["local"].get<bool>()) {
-          LOGE("useLocal from SCHEDULER /job/new");
-          throw secc_exception;
-        }
-
-        // FIXME : implement CACHE logic!!
-        if (secc_cache && job["cache"].get<bool>()) {
-          funcDaemonCache();
-        } else {
-          funcDaemonCompile();
-        }
-
-      }).end();
-
+      funcJobNew();
     })
     .end();
+  };  // funcOptionAnalyze
 
+  try
+  {
+    //quick checks.
+    if (secc_scheduler_host.size() == 0) {
+      LOGE("secc_scheduler_host error");
+      throw secc_exception;
+    }
+    if (secc_cwd.find("CMakeFiles") != std::string::npos) {
+      LOGE("in CMakeFiles");
+      throw secc_exception;
+    }
+
+    if (!_argv_c_exists) {
+      LOGE("-c not exists");
+      throw secc_exception;
+    }
+
+    funcOptionAnalyze();
   }
   catch (const std::exception &e)
   {
