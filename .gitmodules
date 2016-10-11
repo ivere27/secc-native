@@ -4,3 +4,6 @@
 [submodule "json"]
 	path = json
 	url = https://github.com/nlohmann/json.git
+[submodule "SimpleProcessSpawn"]
+	path = SimpleProcessSpawn
+	url = https://github.com/ivere27/SimpleProcessSpawn.git

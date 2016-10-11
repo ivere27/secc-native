@@ -8,7 +8,7 @@
 #define CHUNK 512
 
 
-int getZippedStream(const char* cmd, stringstream& buf, std::shared_ptr<std::string> hash, size_t *totalSize)
+int getZippedStream(stringstream& source, stringstream& buf, std::shared_ptr<std::string> hash, size_t *totalSize)
 {
   *totalSize = 0;
   MD5state_st md5ctx;
@@ -27,19 +27,13 @@ int getZippedStream(const char* cmd, stringstream& buf, std::shared_ptr<std::str
 
   char in[CHUNK];
   Bytef out[CHUNK];
-  FILE *fp = popen(cmd, "r");
-  if (!fp) return 1;
 
   do {
-    int len = fread(in, 1, CHUNK, fp);
+    int len = source.rdbuf()->sgetn((char*)in, sizeof in);
     MD5_Update(&md5ctx, in, len);
     //fwrite(in, 1, len, stdout); //debug output
 
-    if(ferror(fp)) {
-      (void)deflateEnd(&strm);
-      return Z_ERRNO;
-    }
-    flush = feof(fp) ? Z_FINISH : Z_NO_FLUSH;
+    flush = (len==0) ? Z_FINISH : Z_NO_FLUSH;
     strm.avail_in = len;
     strm.next_in = (Bytef*)in;
 
@@ -75,7 +69,7 @@ int getZippedStream(const char* cmd, stringstream& buf, std::shared_ptr<std::str
 
   *hash = hex;
 
-  return pclose(fp);
+  return 0;
 }
 
 /* Decompress from file source to file dest until stream ends or EOF.

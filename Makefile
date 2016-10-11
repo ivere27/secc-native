@@ -4,6 +4,7 @@ CFLAGS=-c -Wall -std=c++11 \
 		-I./SimpleHttpRequest/libuv/include/ \
 		-I./SimpleHttpRequest/openssl/include/ \
 		-I./SimpleHttpRequest \
+		-I./SimpleProcessSpawn \
 		-I./json/src
 LDFLAGS=-lpthread -lz \
 		./SimpleHttpRequest/libuv/.libs/libuv.a \
