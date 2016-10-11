@@ -14,6 +14,8 @@
 #include "json.hpp"
 #include "SimpleHttpRequest.hpp"
 
+using request::LOGI;
+
 #include <sys/utsname.h>
 
 #include "untar.h"
@@ -22,7 +24,6 @@
 #include "UriCodec.h"
 
 using namespace std;
-using namespace request;
 using namespace nlohmann;
 
 class _secc_exception : public std::exception
@@ -35,6 +36,8 @@ class _secc_exception : public std::exception
 
 int main(int argc, char* argv[])
 {
+  static uv_loop_t* loop = uv_default_loop();
+
   //debug
   if (getenv("SECC_CMDLINE")) {
     string cmd = "";
@@ -85,7 +88,7 @@ int main(int argc, char* argv[])
     //LOGI(headers)
     //LOGI(infileBuffer.str());
 
-    SimpleHttpRequest request;
+    static request::SimpleHttpRequest request(loop);
     request.timeout = 50000;
     request
     .setHeader("content-type","application/octet-stream")
@@ -99,10 +102,10 @@ int main(int argc, char* argv[])
     .setHeader("secc-cross", secc_cross ? "true" : "false")
     .setHeader("secc-target", "x86_64-linux-gnu") // FIXME : from system
     .post(secc_daemon_compile_uri, infileBuffer.str())
-    .on("error", [](Error&& err){
+    .on("error", [](request::Error&& err){
       throw secc_exception;
     });
-    request.on("response", [&](Response&& res){
+    request.on("response", [&](request::Response&& res){
       //check secc-code
       LOGI("compile - response status code: ", res.statusCode);
       if ( res.statusCode != 200
@@ -144,12 +147,12 @@ int main(int argc, char* argv[])
 
       LOGI("cache is available. try URL : ", secc_daemon_cache_uri);
 
-      SimpleHttpRequest requestCache;
+      static request::SimpleHttpRequest requestCache(loop);
       requestCache.timeout = 50000;
       requestCache.get(secc_daemon_cache_uri)
-      .on("error", [](Error&& err){
+      .on("error", [](request::Error&& err){
         throw secc_exception;
-      }).on("response", [&](Response&& res){
+      }).on("response", [&](request::Response&& res){
         //check secc-code
         LOGI("cache - response status code: ", res.statusCode);
         if (res.statusCode != 200)
@@ -246,13 +249,13 @@ int main(int argc, char* argv[])
     LOGI("REQUEST body /job/new");
     LOGI(data);
 
-    SimpleHttpRequest requestJobNew;
+    static request::SimpleHttpRequest requestJobNew(loop);
     requestJobNew.timeout = 50000;
     requestJobNew.setHeader("content-type","application/json")
     .post(secc_scheduler_host + "/job/new", data.dump())
-    .on("error", [](Error&& err){
+    .on("error", [](request::Error&& err){
       throw secc_exception;
-    }).on("response", [&](Response&& res){
+    }).on("response", [&](request::Response&& res){
       LOGI("JOB - response status code:", res.statusCode);
 
       if (res.statusCode != 200)
@@ -286,13 +289,13 @@ int main(int argc, char* argv[])
 
     LOGI(data.dump());
 
-    SimpleHttpRequest requestOptionAnalyze;
+    static request::SimpleHttpRequest requestOptionAnalyze(loop);
     requestOptionAnalyze.timeout = 1000;
     requestOptionAnalyze.setHeader("content-type","application/json")
     .post(secc_scheduler_host + "/option/analyze", data.dump())
-    .on("error", [](Error&& err){
+    .on("error", [](request::Error&& err){
       throw secc_exception;
-    }).on("response", [&](Response&& res){
+    }).on("response", [&](request::Response&& res){
       LOGI("option - response status code: ", res.statusCode);
       if (res.statusCode != 200)
         throw secc_exception;
@@ -344,5 +347,5 @@ int main(int argc, char* argv[])
     execv(secc_driver_path.c_str(), argv);
   }
 
-  return 0;
+  return uv_run(loop, UV_RUN_DEFAULT);
 }

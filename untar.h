@@ -7,7 +7,6 @@
 #include "utils.h"
 
 using namespace std;
-using namespace request;
 
 // https://github.com/libarchive/libarchive/blob/master/contrib/untar.c
 
