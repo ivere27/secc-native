@@ -338,6 +338,28 @@ int main(int argc, char* argv[])
     .end();
   };  // funcOptionAnalyze
 
+  auto passThrough = [&]() {
+    // FIXME : check the driver's path in PATH ENV
+    char* pathBuf = new char[secc_driver_path.length()];
+    strcpy(pathBuf, secc_driver_path.c_str());
+    argv[0] = pathBuf;
+
+    //passThrough
+    static spawn::SimpleProcessSpawn processPassThrough(loop, argv);
+    processPassThrough.timeout = 60*60*1000;
+    processPassThrough.on("error", [](spawn::Error &&error){
+      LOGE(error.name);
+      LOGE(error.message);
+    })
+    .on("response", [&](spawn::Response &&response){
+      cout << response.stdout.str();
+      cerr << response.stderr.str();
+
+      _exit(response.exitStatus);
+    })
+    .spawn();
+  };
+
   try
   {
     //quick checks.
@@ -363,12 +385,7 @@ int main(int argc, char* argv[])
     LOGI("passThrough ", secc_driver_path.c_str());
 
     //passThrough
-    char pathBuf[1024];
-    strcpy(pathBuf, secc_driver_path.c_str());
-    argv[0] = pathBuf;
-
-    // FIXME : use uv_spawn
-    execv(secc_driver_path.c_str(), argv);
+    passThrough();
   }
 
   return uv_run(loop, UV_RUN_DEFAULT);
