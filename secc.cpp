@@ -94,29 +94,29 @@ int main(int argc, char* argv[])
     request
     .setHeader("content-type","application/octet-stream")
     .setHeader("Content-Encoding", "gzip")
-    .setHeader("secc-jobid", to_string(job["jobId"].get<int>()))
-    .setHeader("secc-driver", secc_driver)
-    .setHeader("secc-language", option["language"])
-    .setHeader("secc-argv", option["remoteArgv"].dump())
-    .setHeader("secc-filename", secc_filename)
-    .setHeader("secc-outfile", option["outfile"].is_null() ? "null" : option["outfile"].get<string>())
-    .setHeader("secc-cross", secc_cross ? "true" : "false")
-    .setHeader("secc-target", "x86_64-linux-gnu") // FIXME : from system
+    .setHeader("x-secc-jobid", to_string(job["jobId"].get<int>()))
+    .setHeader("x-secc-driver", secc_driver)
+    .setHeader("x-secc-language", option["language"])
+    .setHeader("x-secc-argv", option["remoteArgv"].dump())
+    .setHeader("x-secc-filename", secc_filename)
+    .setHeader("x-secc-outfile", option["outfile"].is_null() ? "null" : option["outfile"].get<string>())
+    .setHeader("x-secc-cross", secc_cross ? "true" : "false")
+    .setHeader("x-secc-target", "x86_64-linux-gnu") // FIXME : from system
     .post(secc_daemon_compile_uri, infileBuffer.str())
     .on("error", [](request::Error&& err){
       throw secc_exception;
     });
     request.on("response", [&](request::Response&& res){
-      //check secc-code
+      //check x-secc-code
       LOGI("compile - response status code: ", res.statusCode);
       if ( res.statusCode != 200
-        || res.headers["secc-code"].compare("0") != 0)
+        || res.headers["x-secc-code"].compare("0") != 0)
         throw secc_exception;
 
-      if (res.headers.count("secc-stdout"))
-        cout << UriDecode(res.headers["secc-stdout"]);
-      if (res.headers.count("secc-stderr"))
-        cerr << UriDecode(res.headers["secc-stderr"]);
+      if (res.headers.count("x-secc-stdout"))
+        cout << UriDecode(res.headers["x-secc-stdout"]);
+      if (res.headers.count("x-secc-stderr"))
+        cerr << UriDecode(res.headers["x-secc-stderr"]);
 
       string outdir = (option["outfile"].is_null())
                     ? secc_cwd
@@ -154,15 +154,15 @@ int main(int argc, char* argv[])
       .on("error", [](request::Error&& err){
         throw secc_exception;
       }).on("response", [&](request::Response&& res){
-        //check secc-code
+        //check x-secc-code
         LOGI("cache - response status code: ", res.statusCode);
         if (res.statusCode != 200)
           throw std::runtime_error("unable to get the cache");
 
-        if (res.headers.count("secc-stdout"))
-          cout << UriDecode(res.headers["secc-stdout"]);
-        if (res.headers.count("secc-stderr"))
-          cerr << UriDecode(res.headers["secc-stderr"]);
+        if (res.headers.count("x-secc-stdout"))
+          cout << UriDecode(res.headers["x-secc-stdout"]);
+        if (res.headers.count("x-secc-stderr"))
+          cerr << UriDecode(res.headers["x-secc-stderr"]);
 
         string outdir = (option["outfile"].is_null())
                       ? secc_cwd
