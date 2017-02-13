@@ -35,9 +35,18 @@ class _secc_exception : public std::exception
   }
 } secc_exception;
 
+struct SECC {
+  string scheduler_address, scheduler_port, scheduler_host, driver, driver_path, cwd, mode;
+  bool cache, cross;
+  char** argv;
+};
+
+static uv_loop_t* loop = uv_default_loop();
+
 int main(int argc, char* argv[])
 {
-  static uv_loop_t* loop = uv_default_loop();
+  SECC *secc = new SECC();
+  secc->argv = argv;
 
   //debug
   if (getenv("SECC_CMDLINE")) {
@@ -57,15 +66,15 @@ int main(int argc, char* argv[])
   auto outfileBuffer = make_shared<stringstream>();
   auto tempBuffer = make_shared<stringstream>();
 
-  string secc_scheduler_address = (getenv("SECC_ADDRESS")) ? getenv("SECC_ADDRESS") : "127.0.0.1";
-  string secc_scheduler_port = (getenv("SECC_PORT")) ? getenv("SECC_PORT") : "10509";
-  string secc_scheduler_host = "http://" + secc_scheduler_address + ":" + secc_scheduler_port; //FIXME : from settings
-  string secc_driver = _basename(argv[0], false);                // FIXME : exception
-  string secc_driver_path = "/usr/bin/" + secc_driver;  // FIXME : from PATH
-  string secc_cwd = getcwd(nullptr, 0);
-  string secc_mode = "1";      //FIXME : mode 2
-  bool secc_cache = (getenv("SECC_CACHE") && strcmp(getenv("SECC_CACHE"),"1") == 0) ? true : false;
-  bool secc_cross = (getenv("SECC_CROSS") && strcmp(getenv("SECC_CROSS"),"1") == 0) ? true : false;
+  secc->scheduler_address = (getenv("SECC_ADDRESS")) ? getenv("SECC_ADDRESS") : "127.0.0.1";
+  secc->scheduler_port = (getenv("SECC_PORT")) ? getenv("SECC_PORT") : "10509";
+  secc->scheduler_host = "http://" + secc->scheduler_address + ":" + secc->scheduler_port; //FIXME : from settings
+  secc->driver = _basename(argv[0], false);                // FIXME : exception
+  secc->driver_path = "/usr/bin/" + secc->driver;  // FIXME : from PATH
+  secc->cwd = getcwd(nullptr, 0);
+  secc->mode = "1";      //FIXME : mode 2
+  secc->cache = (getenv("SECC_CACHE") && strcmp(getenv("SECC_CACHE"),"1") == 0) ? true : false;
+  secc->cross = (getenv("SECC_CROSS") && strcmp(getenv("SECC_CROSS"),"1") == 0) ? true : false;
 
   bool _argv_c_exists = false;
   auto secc_argv = json::array();
@@ -74,6 +83,40 @@ int main(int argc, char* argv[])
     secc_argv[i-1] = argv[i];
   }
 
+
+  auto passThrough = [&]() {
+    LOGE("passThrough");
+    static uv_work_t work_req;
+    work_req.data = (void*)secc;
+    uv_after_work_cb after_work_cb =  [](uv_work_t* req, int status) {
+      SECC *secc = (SECC*)(work_req.data);
+      ASSERT(req);
+      ASSERT(status == 0);
+
+      // FIXME : check the driver's path in PATH ENV
+      char* pathBuf = new char[secc->driver_path.length()];
+      strcpy(pathBuf, secc->driver_path.c_str());
+      secc->argv[0] = pathBuf;
+
+      //passThrough
+      static spawn::SimpleProcessSpawn processPassThrough(loop, secc->argv);
+      processPassThrough.timeout = 60*60*1000;
+      processPassThrough.on("error", [](spawn::Error &&error){
+        LOGE(error.name);
+        LOGE(error.message);
+      })
+      .on("response", [&](spawn::Response &&response){
+        cout << response.stdout.str();
+        cerr << response.stderr.str();
+
+        _exit(response.exitStatus);
+      })
+      .spawn();
+    };
+
+    int r = uv_queue_work(loop, &work_req, [](uv_work_t* req){}, after_work_cb);
+    ASSERT(r==0);
+  };
 
   auto funcDaemonCompile = [&]() {
     string secc_daemon_host = "http://" + job["daemon"]["daemonAddress"].get<string>() + ":" + std::to_string(job["daemon"]["daemonPort"].get<int>());
@@ -95,23 +138,24 @@ int main(int argc, char* argv[])
     .setHeader("content-type","application/octet-stream")
     .setHeader("Content-Encoding", "gzip")
     .setHeader("x-secc-jobid", to_string(job["jobId"].get<int>()))
-    .setHeader("x-secc-driver", secc_driver)
+    .setHeader("x-secc-driver", secc->driver)
     .setHeader("x-secc-language", option["language"])
     .setHeader("x-secc-argv", option["remoteArgv"].dump())
     .setHeader("x-secc-filename", secc_filename)
     .setHeader("x-secc-outfile", option["outfile"].is_null() ? "null" : option["outfile"].get<string>())
-    .setHeader("x-secc-cross", secc_cross ? "true" : "false")
+    .setHeader("x-secc-cross", secc->cross ? "true" : "false")
     .setHeader("x-secc-target", "x86_64-linux-gnu") // FIXME : from system
     .post(secc_daemon_compile_uri, infileBuffer.str())
-    .on("error", [](request::Error&& err){
-      throw secc_exception;
+    .on("error", [&](request::Error&& err){
+      return passThrough();
     });
     request.on("response", [&](request::Response&& res){
       //check x-secc-code
       LOGI("compile - response status code: ", res.statusCode);
       if ( res.statusCode != 200
-        || res.headers["x-secc-code"].compare("0") != 0)
-        throw secc_exception;
+        || res.headers["x-secc-code"].compare("0") != 0) {
+        return passThrough();
+      }
 
       if (res.headers.count("x-secc-stdout"))
         cout << UriDecode(res.headers["x-secc-stdout"]);
@@ -119,7 +163,7 @@ int main(int argc, char* argv[])
         cerr << UriDecode(res.headers["x-secc-stderr"]);
 
       string outdir = (option["outfile"].is_null())
-                    ? secc_cwd
+                    ? secc->cwd
                     : _dirname(option["outfile"].get<string>());
       LOGI("outdir : ", outdir);
 
@@ -127,13 +171,15 @@ int main(int argc, char* argv[])
       stringstream tarStream;
 
       int ret = unzip(res, tarStream);
-      if (ret != 0)
-        throw secc_exception;
+      if (ret != 0) {
+        return passThrough();
+      }
 
       LOGI("unzip done.");
       ret = untar(tarStream, outdir.c_str());
-      if (ret != 0)
-        throw secc_exception;
+      if (ret != 0) {
+        return passThrough();
+      }
 
       LOGI("done");
 
@@ -151,13 +197,15 @@ int main(int argc, char* argv[])
       static request::SimpleHttpRequest requestCache(loop);
       requestCache.timeout = 50000;
       requestCache.get(secc_daemon_cache_uri)
-      .on("error", [](request::Error&& err){
-        throw secc_exception;
+      .on("error", [&](request::Error&& err){
+        return passThrough();
       }).on("response", [&](request::Response&& res){
         //check x-secc-code
         LOGI("cache - response status code: ", res.statusCode);
-        if (res.statusCode != 200)
-          throw std::runtime_error("unable to get the cache");
+        if (res.statusCode != 200) {
+          LOGE("unable to get the cache");
+          return passThrough();
+        }
 
         if (res.headers.count("x-secc-stdout"))
           cout << UriDecode(res.headers["x-secc-stdout"]);
@@ -165,20 +213,22 @@ int main(int argc, char* argv[])
           cerr << UriDecode(res.headers["x-secc-stderr"]);
 
         string outdir = (option["outfile"].is_null())
-                      ? secc_cwd
+                      ? secc->cwd
                       : _dirname(option["outfile"].get<string>());
         LOGI("outdir : ", outdir);
 
 
         stringstream tarStream;
         int ret = unzip(res, tarStream);
-        if (ret != 0)
-          throw secc_exception;
+        if (ret != 0) {
+          return passThrough();
+        }
 
         LOGI("unzip done.");
         ret = untar(tarStream, outdir.c_str());
-        if (ret != 0)
-          throw secc_exception;
+        if (ret != 0) {
+          return passThrough();
+        }
 
         LOGI("cache done");
         _exit(0);
@@ -193,8 +243,8 @@ int main(int argc, char* argv[])
   auto funcJobNew = [&]() {
     // make argv array
     char *childArgv[option["localArgv"].size() + 1 + 1] = {NULL};
-    childArgv[0] = new char[secc_driver_path.length()];
-    strcpy(childArgv[0], secc_driver_path.c_str());
+    childArgv[0] = new char[secc->driver_path.length()];
+    strcpy(childArgv[0], secc->driver_path.c_str());
     for(size_t i = 1; i < option["localArgv"].size(); i++) {
       string str = option["localArgv"][i].get<string>();
       childArgv[i] = new char[str.length()];
@@ -206,10 +256,10 @@ int main(int argc, char* argv[])
     //preprocessed file.
     static spawn::SimpleProcessSpawn process(loop, childArgv);
     process.timeout = 10000;
-    process.on("error", [](spawn::Error &&error){
+    process.on("error", [&](spawn::Error &&error){
       LOGE(error.name);
       LOGE(error.message);
-      throw secc_exception; // spawn error or timeout
+      return passThrough();
     })
     .on("response", [&](spawn::Response &&response){
       if (response.exitStatus != 0 ||
@@ -217,22 +267,24 @@ int main(int argc, char* argv[])
         LOGE(response.exitStatus);
         LOGE(response.termSignal);
         LOGE(response.stderr.str());
-        throw secc_exception; // something wrong in generating.
+        return passThrough(); // something wrong in generating.
       }
       LOGI(response.stdout.tellp());
 
       size_t totalSize;
       int ret = getZippedStream(response.stdout, infileBuffer, sourceHash, &totalSize);
-      if (ret != 0)
-        throw secc_exception;
+      if (ret != 0) {
+        return passThrough();
+      }
 
       LOGI("request infile size : ", totalSize);
 
 
       //system information
       struct utsname u;
-      if (uname(&u) != 0)
-        throw secc_exception;
+      if (uname(&u) != 0) {
+        return passThrough();
+      }
 
 
       string hostname = u.nodename;
@@ -244,9 +296,9 @@ int main(int argc, char* argv[])
       string release = u.release;
       string arch = (strcmp(u.machine,"x86_64") == 0) ? "x64" : "unknown"; //FIXME : arm
 
-      string compiler_version = _exec(string(secc_driver_path + " --version").c_str());
-      string compiler_dumpversion = _exec(string(secc_driver_path + " -dumpversion").c_str());
-      string compiler_dumpmachine = _exec(string(secc_driver_path + " -dumpmachine").c_str());
+      string compiler_version = _exec(string(secc->driver_path + " --version").c_str());
+      string compiler_dumpversion = _exec(string(secc->driver_path + " -dumpversion").c_str());
+      string compiler_dumpmachine = _exec(string(secc->driver_path + " -dumpmachine").c_str());
       compiler_dumpversion = trim(compiler_dumpversion);
       compiler_dumpmachine = trim(compiler_dumpmachine);
 
@@ -260,10 +312,10 @@ int main(int argc, char* argv[])
       data["compilerInformation"]["version"] = compiler_version;
       data["compilerInformation"]["dumpversion"] = compiler_dumpversion;
       data["compilerInformation"]["dumpmachine"] = compiler_dumpmachine;
-      data["mode"] = secc_mode;
+      data["mode"] = secc->mode;
       data["projectId"] = option["projectId"];
-      data["cachePrefered"] = secc_cache;
-      data["crossPrefered"] = secc_cross;
+      data["cachePrefered"] = secc->cache;
+      data["crossPrefered"] = secc->cross;
       data["sourcePath"] = option["infile"];
       data["sourceHash"] = *sourceHash;
       data["argvHash"] = option["argvHash"];
@@ -274,25 +326,26 @@ int main(int argc, char* argv[])
       static request::SimpleHttpRequest requestJobNew(loop);
       requestJobNew.timeout = 50000;
       requestJobNew.setHeader("content-type","application/json")
-      .post(secc_scheduler_host + "/job/new", data.dump())
-      .on("error", [](request::Error&& err){
-        throw secc_exception;
+      .post(secc->scheduler_host + "/job/new", data.dump())
+      .on("error", [&](request::Error&& err){
+        return passThrough();
       }).on("response", [&](request::Response&& res){
         LOGI("JOB - response status code:", res.statusCode);
 
-        if (res.statusCode != 200)
-          throw secc_exception;
+        if (res.statusCode != 200) {
+          return passThrough();
+        }
 
         job = json::parse(res.str());
         LOGI(job.dump());
 
         if (job["local"].get<bool>()) {
           LOGE("useLocal from SCHEDULER /job/new");
-          throw secc_exception;
+          return passThrough();
         }
 
         // FIXME : implement CACHE logic!!
-        if (secc_cache && job["cache"].get<bool>()) {
+        if (secc->cache && job["cache"].get<bool>()) {
           funcDaemonCache();
         } else {
           funcDaemonCompile();
@@ -306,23 +359,24 @@ int main(int argc, char* argv[])
 
   auto funcOptionAnalyze = [&]() {
     auto data = json::object();
-    data["driver"] = secc_driver;
-    data["cwd"] = secc_cwd;
-    data["mode"] = secc_mode;
+    data["driver"] = secc->driver;
+    data["cwd"] = secc->cwd;
+    data["mode"] = secc->mode;
     data["argv"] = secc_argv;
 
     LOGI(data.dump());
-
     static request::SimpleHttpRequest requestOptionAnalyze(loop);
     requestOptionAnalyze.timeout = 1000;
     requestOptionAnalyze.setHeader("content-type","application/json")
-    .post(secc_scheduler_host + "/option/analyze", data.dump())
-    .on("error", [](request::Error&& err){
-      throw secc_exception;
+    .post(secc->scheduler_host + "/option/analyze", data.dump())
+    .on("error", [&](request::Error&& err){
+      LOGE("error on /option/analyze");
+      return passThrough();
     }).on("response", [&](request::Response&& res){
       LOGI("option - response status code: ", res.statusCode);
-      if (res.statusCode != 200)
-        throw secc_exception;
+      if (res.statusCode != 200) {
+        return passThrough();
+      }
 
       option = json::parse(res.str());
       LOGI(option.dump());
@@ -330,7 +384,7 @@ int main(int argc, char* argv[])
       //FIXME : check invalid the outfile dirname
       if (option["useLocal"].get<bool>()) {
         LOGE("useLocal from /option/analyze");
-        throw secc_exception;
+        return passThrough();
       }
 
       funcJobNew();
@@ -338,36 +392,14 @@ int main(int argc, char* argv[])
     .end();
   };  // funcOptionAnalyze
 
-  auto passThrough = [&]() {
-    // FIXME : check the driver's path in PATH ENV
-    char* pathBuf = new char[secc_driver_path.length()];
-    strcpy(pathBuf, secc_driver_path.c_str());
-    argv[0] = pathBuf;
-
-    //passThrough
-    static spawn::SimpleProcessSpawn processPassThrough(loop, argv);
-    processPassThrough.timeout = 60*60*1000;
-    processPassThrough.on("error", [](spawn::Error &&error){
-      LOGE(error.name);
-      LOGE(error.message);
-    })
-    .on("response", [&](spawn::Response &&response){
-      cout << response.stdout.str();
-      cerr << response.stderr.str();
-
-      _exit(response.exitStatus);
-    })
-    .spawn();
-  };
-
   try
   {
     //quick checks.
-    if (secc_scheduler_host.size() == 0) {
+    if (secc->scheduler_host.size() == 0) {
       LOGE("secc_scheduler_host error");
       throw secc_exception;
     }
-    if (secc_cwd.find("CMakeFiles") != std::string::npos) {
+    if (secc->cwd.find("CMakeFiles") != std::string::npos) {
       LOGE("in CMakeFiles");
       throw secc_exception;
     }
@@ -382,7 +414,7 @@ int main(int argc, char* argv[])
   catch (const std::exception &e)
   {
     LOGE("Error exception: ", e.what());
-    LOGI("passThrough ", secc_driver_path.c_str());
+    LOGI("passThrough ", secc->driver_path.c_str());
 
     //passThrough
     passThrough();
