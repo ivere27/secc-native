@@ -88,33 +88,34 @@ int main(int argc, char* argv[])
     LOGE("passThrough");
     static uv_work_t work_req;
     work_req.data = (void*)secc;
-    uv_after_work_cb after_work_cb =  [](uv_work_t* req, int status) {
-      SECC *secc = (SECC*)(work_req.data);
-      ASSERT(req);
-      ASSERT(status == 0);
+    int r = uv_queue_work(loop, &work_req,
+      [](uv_work_t* req) {},
+      [](uv_work_t* req, int status) {
+        SECC *secc = (SECC*)(work_req.data);
+        ASSERT(req);
+        ASSERT(status == 0);
 
-      // FIXME : check the driver's path in PATH ENV
-      char* pathBuf = new char[secc->driver_path.length()];
-      strcpy(pathBuf, secc->driver_path.c_str());
-      secc->argv[0] = pathBuf;
+        // FIXME : check the driver's path in PATH ENV
+        char* pathBuf = new char[secc->driver_path.length()];
+        strcpy(pathBuf, secc->driver_path.c_str());
+        secc->argv[0] = pathBuf;
 
-      //passThrough
-      static spawn::SimpleProcessSpawn processPassThrough(loop, secc->argv);
-      processPassThrough.timeout = 60*60*1000;
-      processPassThrough.on("error", [](spawn::Error &&error){
-        LOGE(error.name);
-        LOGE(error.message);
-      })
-      .on("response", [&](spawn::Response &&response){
-        cout << response.stdout.str();
-        cerr << response.stderr.str();
+        //passThrough
+        static spawn::SimpleProcessSpawn processPassThrough(loop, secc->argv);
+        processPassThrough.timeout = 60*60*1000;
+        processPassThrough.on("error", [](spawn::Error &&error){
+          LOGE(error.name);
+          LOGE(error.message);
+        })
+        .on("response", [&](spawn::Response &&response){
+          cout << response.stdout.str();
+          cerr << response.stderr.str();
 
-        _exit(response.exitStatus);
-      })
-      .spawn();
-    };
-
-    int r = uv_queue_work(loop, &work_req, [](uv_work_t* req){}, after_work_cb);
+          _exit(response.exitStatus);
+        })
+        .spawn();
+      }
+    );
     ASSERT(r==0);
   };
 
