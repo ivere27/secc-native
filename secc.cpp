@@ -106,6 +106,8 @@ int main(int argc, char* argv[])
         processPassThrough.on("error", [](spawn::Error &&error){
           LOGE(error.name);
           LOGE(error.message);
+
+          _exit(1); // SimpleProcessSpawn error
         })
         .on("response", [&](spawn::Response &&response){
           cout << response.stdout.str();
